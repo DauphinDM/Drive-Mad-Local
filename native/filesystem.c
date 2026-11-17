@@ -494,7 +494,16 @@ u32 dm_syscall_getdents64(struct w2c_a *h, u32 fd, u32 p, u32 size) {
     write64(h, p + count + 8, (++f->position) * 280);
     uint16_t length = 280;
     memcpy(mem(h, p + count + 16, 2), &length, 2);
-    *(u8 *)mem(h, p + count + 18, 1) = entry->d_type;
+#ifdef _WIN32
+    // MinGW's dirent has no d_type; derive the DirEntry type from stat.
+    struct stat st;
+    u8 type = 0;
+    if (fstatat(f->fd, entry->d_name, &st, 0) == 0)
+      type = (st.st_mode & _S_IFDIR) ? 4 : (st.st_mode & _S_IFREG) ? 8 : 0;
+#else
+    u8 type = entry->d_type;
+#endif
+    *(u8 *)mem(h, p + count + 18, 1) = type;
     snprintf(mem(h, p + count + 19, 256), 256, "%s", entry->d_name);
     count += 280;
   }

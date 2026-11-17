@@ -407,17 +407,25 @@ void dm_assert_fail(struct w2c_a *h, u32 condition, u32 filename, u32 line,
 void dm_abort_js(struct w2c_a *h) { fail("Game aborted"); }
 void dm_exit(struct w2c_a *h, u32 status) { exit(status); }
 static void put_tm(struct w2c_a *h, u32 p, const struct tm *tm) {
-  int values[] = {tm->tm_sec,   tm->tm_min,   tm->tm_hour, tm->tm_mday,
-                  tm->tm_mon,   tm->tm_year,  tm->tm_wday, tm->tm_yday,
-                  tm->tm_isdst, tm->tm_gmtoff};
+#ifdef _WIN32
+  const int gmtoff = 0; // MinGW's struct tm has no tm_gmtoff field.
+#else
+  const int gmtoff = (int)tm->tm_gmtoff;
+#endif
+  int values[] = {tm->tm_sec, tm->tm_min,   tm->tm_hour, tm->tm_mday,
+                  tm->tm_mon, tm->tm_year,  tm->tm_wday, tm->tm_yday,
+                  tm->tm_isdst, gmtoff};
   for (int i = 0; i < 10; i++)
     write32(h, p + i * 4, values[i]);
 }
 void dm_localtime_js(struct w2c_a *h, u32 lo, u32 hi, u32 p) {
   time_t t = (int64_t)(((u64)hi << 32) | lo);
-  struct tm tm;
-  if (!localtime_r(&t, &tm))
+  // The native host is single-threaded, so the static localtime result is safe
+  // to copy. This also avoids MSVC/MinGW localtime_s argument-order differences.
+  struct tm *local = localtime(&t);
+  if (!local)
     fail("localtime failed");
+  struct tm tm = *local;
   put_tm(h, p, &tm);
 }
 u32 dm_mktime_js(struct w2c_a *h, u32 p) {
