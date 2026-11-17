@@ -5,6 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef GL_DEPTH_STENCIL
+#define GL_DEPTH_STENCIL 0x84f9
+#endif
+#ifndef GL_DEPTH_STENCIL_ATTACHMENT
+#define GL_DEPTH_STENCIL_ATTACHMENT 0x821a
+#endif
+
 #ifdef DM_DESKTOP_GL
 // The game ships GLSL ES 1.00 shaders. Desktop GL 2.1 accepts the same syntax
 // as GLSL 1.20 once ES-only precision/extension declarations are removed.
@@ -201,9 +208,26 @@ void dm_glDeleteTextures(struct w2c_a *h, u32 n, u32 p) {
   glDeleteTextures(n, mem(h, p, (size_t)n * 4));
 }
 void dm_glFramebufferRenderbuffer(struct w2c_a *h, u32 a, u32 b, u32 c, u32 d) {
+#ifndef DM_DESKTOP_GL
+  // GLES2 core has no packed depth/stencil attachment; EXT/OES drivers expose
+  // it as a depth attachment with a packed depth-stencil renderbuffer.
+  if (b == GL_DEPTH_STENCIL_ATTACHMENT)
+    b = GL_DEPTH_ATTACHMENT;
+#endif
   glFramebufferRenderbuffer(a, b, c, d);
 }
 void dm_glRenderbufferStorage(struct w2c_a *h, u32 a, u32 b, u32 c, u32 d) {
+#ifndef DM_DESKTOP_GL
+  if (b == GL_DEPTH_STENCIL) {
+    // The game asks for a combined attachment, which is not a core GLES2
+    // renderbuffer format. Use the packed extension, then fall back to depth.
+    static const GLenum packed = 0x88f0; // GL_DEPTH24_STENCIL8_OES
+    glRenderbufferStorage(a, packed, c, d);
+    if (glGetError() != GL_INVALID_ENUM)
+      return;
+    b = GL_DEPTH_COMPONENT16;
+  }
+#endif
   glRenderbufferStorage(a, b, c, d);
 }
 void dm_glGenRenderbuffers(struct w2c_a *h, u32 n, u32 p) {
