@@ -5,7 +5,7 @@
 #include <SDL.h>
 #include <stdio.h>
 
-#define DM_GL_LOAD(type, name)                                                 \
+#define DM_GL_LOAD(name, type)                                                 \
   do {                                                                         \
     dm_gl_p_##name = (type)SDL_GL_GetProcAddress(#name);                       \
     if (!dm_gl_p_##name) {                                                     \

@@ -82,7 +82,7 @@ static inline void dm_compat_glDepthRangef(GLfloat near_value,
   X(glUniformMatrix4fv, PFNGLUNIFORMMATRIX4FVPROC)                             \
   X(glUseProgram, PFNGLUSEPROGRAMPROC)                                         \
   X(glVertexAttribPointer, PFNGLVERTEXATTRIBPOINTERPROC)
-#define DM_GL_DECLARE(type, name) extern type dm_gl_p_##name;
+#define DM_GL_DECLARE(name, type) extern type dm_gl_p_##name;
 DM_GL_POINTERS(DM_GL_DECLARE)
 #undef DM_GL_DECLARE
 #define glActiveTexture ((PFNGLACTIVETEXTUREPROC)dm_gl_p_glActiveTexture)
