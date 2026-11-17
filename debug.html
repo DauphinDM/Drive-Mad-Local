@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drive Mad Debug</title>
+  <style>
+    body{margin:0;padding:18px;background:#0c121c;color:#fff;font:14px Arial,sans-serif}
+    h1{margin:0 0 12px;font-size:20px}
+    button{box-sizing:border-box;width:100%;margin-top:8px;padding:8px;border:0;border-radius:4px;background:#168dcc;color:#fff;cursor:pointer}
+    button:hover{background:#35aee8}
+    #status{margin:10px 0;color:#b9d8e8;line-height:1.4}
+  </style>
+</head>
+<body>
+  <h1>Drive Mad debug</h1>
+  <div id="status">Connecting to game...</div>
+  <button id="pause">Pause game</button>
+  <button id="reward">Grant reward</button>
+  <button id="reset">Reset local save</button>
+  <button id="reload">Reload game</button>
+  <script>
+    const channel = new BroadcastChannel("drive-mad-debug");
+    const status = document.getElementById("status");
+    const send = type => channel.postMessage({ type });
+    document.getElementById("pause").onclick = () => send("pause-toggle");
+    document.getElementById("reward").onclick = () => send("reward");
+    document.getElementById("reset").onclick = () => { if (confirm("Reset local save data?")) send("reset"); };
+    document.getElementById("reload").onclick = () => send("reload");
+    channel.onmessage = event => {
+      if (event.data && event.data.type === "status") status.textContent = event.data.text;
+    };
+    channel.postMessage({ type: "status-request" });
+  </script>
+</body>
+</html>

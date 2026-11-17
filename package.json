@@ -1,0 +1,14 @@
+{
+  "name": "drive-mad-local",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "python -m http.server 1420",
+    "prepare:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\sync-desktop-assets.ps1",
+    "tauri": "tauri",
+    "tauri:build": "npm run prepare:desktop && tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
