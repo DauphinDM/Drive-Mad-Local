@@ -1,0 +1,148 @@
+name: Native builds
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libsdl2-dev \
+            libgles2-mesa-dev libgl1-mesa-dev libgl1-mesa-dri libpng-dev \
+            xvfb mesa-utils
+      - run: npm ci
+      - run: npm run tools:install
+      - run: npm run decompile
+      - run: npm run native:build
+      - name: Run unit, SDK and native integration tests
+        env:
+          DRIVE_MAD_TEST_GUI: "1"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          SDL_AUDIODRIVER: dummy
+        run: xvfb-run -a -s "-screen 0 1280x720x24" npm test
+      - name: Native smoke test and screenshot
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          SDL_AUDIODRIVER: dummy
+          DRIVE_MAD_SAVE_DIR: ${{ runner.temp }}/drive-mad-save
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" \
+            ./native/build/drive-mad --menu-self-test \
+            --screenshot "$RUNNER_TEMP/drive-mad.png"
+          test -s "$RUNNER_TEMP/drive-mad.png"
+      - run: npm run native:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            native/build/release/linux/*.AppImage
+            native/build/release/linux/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          core.autocrlf: false
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-nodejs
+            mingw-w64-x86_64-zlib
+            tar
+      - name: Build native game
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          npm ci
+          npm run tools:install
+          npm run decompile
+          npm run native:build
+          export DRIVE_MAD_SAVE_DIR="$(cygpath -m "$PWD/native/build/test-save")"
+          ./native/build/drive-mad.exe --self-test
+          node scripts/package-windows.mjs
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $root = (Get-Location).Path
+          $stage = Join-Path $root "native/build/release/windows/stage"
+          $release = Join-Path $root "native/build/release/windows"
+          $out = Join-Path $release "DriveMad-$version-windows-x64-setup.exe"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/DVERSION=$version" "/DSTAGE=$stage" "/DOUTFILE=$out" `
+            "/DICONFILE=$root\packaging\icon.ico" `
+            "$root\packaging\windows\installer.nsi"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            native/build/release/windows/*.zip
+            native/build/release/windows/*-setup.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: brew install sdl2 libpng pkg-config
+      - run: npm ci
+      - run: npm run tools:install
+      - run: npm run decompile
+      - run: npm run native:build
+      - name: Native self-test
+        run: |
+          mkdir -p "$RUNNER_TEMP/drive-mad-save"
+          DRIVE_MAD_SAVE_DIR="$RUNNER_TEMP/drive-mad-save" ./native/build/drive-mad --self-test
+      - name: Build app bundle and dmg
+        run: |
+          VERSION="$(node -p "require('./package.json').version")" \
+            BINARY="native/build/drive-mad" OUT="native/build/release/macos" \
+            sh packaging/macos/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: native/build/release/macos/*.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

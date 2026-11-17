@@ -3,12 +3,28 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "python -m http.server 1420",
-    "prepare:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\sync-desktop-assets.ps1",
-    "tauri": "tauri",
-    "tauri:build": "npm run prepare:desktop && tauri build"
+    "decompile": "node scripts/decompile.mjs",
+    "tools:install": "node scripts/setup-wabt.mjs",
+    "wasm:build": "node scripts/build-wasm.mjs",
+    "wasm:split": "node scripts/functions.mjs split",
+    "wasm:inspect": "node scripts/functions.mjs inspect",
+    "native:build": "node scripts/build-native.mjs",
+    "native:ui:install": "node scripts/setup-imgui.mjs",
+    "native:research": "node scripts/research-gameplay.mjs",
+    "native:run": "./native/build/drive-mad",
+    "native:mod": "node scripts/native-mod.mjs",
+    "native:sdk": "node scripts/export-native-sdk.mjs",
+    "native:package": "node scripts/package-native.mjs",
+    "native:package:linux": "node scripts/package-native.mjs",
+    "native:package:windows": "node scripts/package-windows.mjs",
+    "native:package:macos": "sh packaging/macos/package.sh",
+    "assets:unpack": "node scripts/assets.mjs unpack",
+    "assets:pack": "node scripts/assets.mjs pack --apply",
+    "test": "node --test tests/*.test.mjs",
+    "format": "prettier --write \"scripts/**/*.mjs\" \"tests/*.mjs\""
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "prettier": "3.10.1",
+    "wabt": "1.0.39"
   }
 }
