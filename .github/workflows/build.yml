@@ -79,6 +79,8 @@ jobs:
           CC: gcc
           CXX: g++
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
           npm ci
           npm run tools:install
@@ -109,7 +111,7 @@ jobs:
           if-no-files-found: error
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

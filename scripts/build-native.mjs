@@ -31,7 +31,11 @@ const output = path.join(root, "native/build");
 const wabt = path.join(generated, "tools/wabt-1.0.39");
 const translator =
   process.env.WASM2C ||
-  path.join(wabt, "bin", process.platform === "win32" ? "wasm2c.exe" : "wasm2c");
+  path.join(
+    wabt,
+    "bin",
+    process.platform === "win32" ? "wasm2c.exe" : "wasm2c",
+  );
 const runtime =
   process.env.WASM2C_RUNTIME || path.join(wabt, "share/wabt/wasm2c");
 const include = process.env.WASM2C_INCLUDE || path.join(wabt, "include");
@@ -146,10 +150,12 @@ await writeFile(
   ].join("\n"),
 );
 const packages = ["sdl2", "libpng"];
-if (desktopGL && !macos) packages.push("gl");
+if (desktopGL && !windows && !macos) packages.push("gl");
 if (!desktopGL) packages.push("glesv2");
+const pkgConfig =
+  process.env.PKG_CONFIG || (windows ? "pkgconf" : "pkg-config");
 const flags = (
-  await run("pkg-config", ["--cflags", "--libs", ...packages], true)
+  await run(pkgConfig, ["--cflags", "--libs", ...packages], true)
 ).split(/\s+/);
 const cc = process.env.CC || "cc";
 const cxx = process.env.CXX || "c++";
@@ -166,7 +172,7 @@ const common = [
   "-I" + path.join(root, "native"),
   "-I" + path.join(root, "native/vendor/imgui"),
   ...(desktopGL ? [] : ["-DIMGUI_IMPL_OPENGL_ES2"]),
-  ...flags.filter((flag) => !flag.startsWith("-l")),
+  ...flags.filter((flag) => !flag.startsWith("-l") && flag !== "-mwindows"),
 ];
 const files = (await readdir(output))
   .filter((name) => /^game(?:_\d+)?\.c$/.test(name))
@@ -195,7 +201,9 @@ for (const name of [
   "imgui_tables.cpp",
   "imgui_widgets.cpp",
   "backends/imgui_impl_sdl2.cpp",
-  desktopGL ? "backends/imgui_impl_opengl2.cpp" : "backends/imgui_impl_opengl3.cpp",
+  desktopGL
+    ? "backends/imgui_impl_opengl2.cpp"
+    : "backends/imgui_impl_opengl3.cpp",
 ]) {
   await access(path.join(imgui, name)).catch(() => {
     throw new Error(
@@ -286,7 +294,10 @@ await run(cxx, [
   ...objects,
   ...flags.filter(
     (flag) =>
-      flag.startsWith("-l") || flag.startsWith("-L") || flag.startsWith("-Wl,"),
+      flag !== "-mwindows" &&
+      (flag.startsWith("-l") ||
+        flag.startsWith("-L") ||
+        flag.startsWith("-Wl,")),
   ),
   ...(macos ? ["-framework", "OpenGL"] : []),
   ...(windows ? ["-lopengl32"] : []),
