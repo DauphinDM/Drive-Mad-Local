@@ -203,6 +203,20 @@ int dm_win_fsync(int fd) {
     return 0;
   return _commit(fd);
 }
+static void dm_copy_stat(struct stat *out, const struct _stat64i32 *in) {
+  memset(out, 0, sizeof(*out));
+  out->st_dev = in->st_dev;
+  out->st_ino = in->st_ino;
+  out->st_mode = in->st_mode;
+  out->st_nlink = in->st_nlink;
+  out->st_uid = in->st_uid;
+  out->st_gid = in->st_gid;
+  out->st_rdev = in->st_rdev;
+  out->st_size = in->st_size;
+  out->st_atime = in->st_atime;
+  out->st_mtime = in->st_mtime;
+  out->st_ctime = in->st_ctime;
+}
 int dm_win_fstat(int fd, struct stat *status) {
   if (fd >= DM_PSEUDO_BASE) {
     memset(status, 0, sizeof(*status));
@@ -210,13 +224,21 @@ int dm_win_fstat(int fd, struct stat *status) {
     status->st_nlink = 1;
     return 0;
   }
-  return _fstat(fd, status);
+  struct _stat64i32 native;
+  int rc = _fstat64i32(fd, &native);
+  if (rc == 0)
+    dm_copy_stat(status, &native);
+  return rc;
 }
 int dm_win_stat(const char *path, struct stat *status) {
   char full[4096];
   if (!dm_full_path(path, full) || !dm_safe_path(full))
     return -1;
-  return _stat(full, status);
+  struct _stat64i32 native;
+  int rc = _stat64i32(full, &native);
+  if (rc == 0)
+    dm_copy_stat(status, &native);
+  return rc;
 }
 int dm_win_fstatat(int directory, const char *path, struct stat *status,
                    int flags) {
@@ -224,7 +246,11 @@ int dm_win_fstatat(int directory, const char *path, struct stat *status,
   char full[4096];
   if (!dm_join(directory, path, full) || !dm_safe_path(full))
     return -1;
-  return _stat(full, status);
+  struct _stat64i32 native;
+  int rc = _stat64i32(full, &native);
+  if (rc == 0)
+    dm_copy_stat(status, &native);
+  return rc;
 }
 int dm_win_faccessat(int directory, const char *path, int mode, int flags) {
   (void)flags;
@@ -308,7 +334,7 @@ int dm_win_utimensat(int directory, const char *path,
     return -1;
   if (!times)
     return _utime(full, NULL);
-  struct utimbuf values;
+  struct _utimbuf values;
   values.actime = times[0].tv_sec;
   values.modtime = times[1].tv_sec;
   return _utime(full, &values);

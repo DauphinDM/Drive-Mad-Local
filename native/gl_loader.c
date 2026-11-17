@@ -12,7 +12,7 @@
       fprintf(stderr, "Missing desktop OpenGL entry point: %s\n", #name);      \
       return 0;                                                                \
     }                                                                          \
-  } while (0)
+  } while (0);
 
 int dm_gl_load(void) {
   DM_GL_POINTERS(DM_GL_LOAD);
