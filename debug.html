@@ -17,6 +17,10 @@
   <div id="status">Connecting to game...</div>
   <button id="pause">Pause game</button>
   <button id="reward">Grant reward</button>
+  <button id="interstitial">Show interstitial event</button>
+  <button id="audio">Mute audio</button>
+  <button id="fullscreen">Toggle fullscreen</button>
+  <button id="resize">Refresh canvas size</button>
   <button id="reset">Reset local save</button>
   <button id="reload">Reload game</button>
   <script>
@@ -25,6 +29,10 @@
     const send = type => channel.postMessage({ type });
     document.getElementById("pause").onclick = () => send("pause-toggle");
     document.getElementById("reward").onclick = () => send("reward");
+    document.getElementById("interstitial").onclick = () => send("interstitial");
+    document.getElementById("audio").onclick = () => send("audio-toggle");
+    document.getElementById("fullscreen").onclick = () => send("fullscreen");
+    document.getElementById("resize").onclick = () => send("resize");
     document.getElementById("reset").onclick = () => { if (confirm("Reset local save data?")) send("reset"); };
     document.getElementById("reload").onclick = () => send("reload");
     channel.onmessage = event => {
