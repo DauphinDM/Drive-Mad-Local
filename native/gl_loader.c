@@ -5,6 +5,10 @@
 #include <SDL.h>
 #include <stdio.h>
 
+#define DM_GL_DEFINE(name, type) type dm_gl_p_##name;
+DM_GL_POINTERS(DM_GL_DEFINE)
+#undef DM_GL_DEFINE
+
 #define DM_GL_LOAD(name, type)                                                 \
   do {                                                                         \
     dm_gl_p_##name = (type)SDL_GL_GetProcAddress(#name);                       \
