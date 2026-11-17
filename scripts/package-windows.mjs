@@ -49,7 +49,9 @@ for (const name of libraries) {
 if (!copied)
   throw new Error(`No runtime DLLs found under ${bin}`);
 const zip = path.join(release, `DriveMad-${version}-windows-x64.zip`);
-const archive = spawnSync("tar", ["-a", "-c", "-f", zip, "-C", stage, "."], {
+// Use bsdtar from Windows rather than Git's GNU tar (which lacks -a).
+const tar = `${process.env.SystemRoot || "C:\\Windows"}\\System32\\tar.exe`;
+const archive = spawnSync(tar, ["-a", "-c", "-f", zip, "-C", stage, "."], {
   encoding: "utf8",
 });
 if (archive.status !== 0)

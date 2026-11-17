@@ -29,7 +29,9 @@ const macos = platform === "darwin";
 const desktopGL = windows || macos || process.env.DM_DESKTOP_GL === "1";
 const output = path.join(root, "native/build");
 const wabt = path.join(generated, "tools/wabt-1.0.39");
-const translator = process.env.WASM2C || path.join(wabt, "bin/wasm2c");
+const translator =
+  process.env.WASM2C ||
+  path.join(wabt, "bin", process.platform === "win32" ? "wasm2c.exe" : "wasm2c");
 const runtime =
   process.env.WASM2C_RUNTIME || path.join(wabt, "share/wabt/wasm2c");
 const include = process.env.WASM2C_INCLUDE || path.join(wabt, "include");

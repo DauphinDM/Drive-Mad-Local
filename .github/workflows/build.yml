@@ -74,17 +74,18 @@ jobs:
             mingw-w64-x86_64-zlib
             tar
       - name: Build native game
-        shell: msys2 {0}
+        shell: pwsh
         env:
           CC: gcc
           CXX: g++
         run: |
+          $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
           npm ci
           npm run tools:install
           npm run decompile
           npm run native:build
-          export DRIVE_MAD_SAVE_DIR="$(cygpath -m "$PWD/native/build/test-save")"
-          ./native/build/drive-mad.exe --self-test
+          $env:DRIVE_MAD_SAVE_DIR = "$PWD\native\build\test-save"
+          .\native\build\drive-mad.exe --self-test
           node scripts/package-windows.mjs
       - name: Build NSIS installer
         shell: pwsh
