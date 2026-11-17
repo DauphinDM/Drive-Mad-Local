@@ -529,10 +529,11 @@ u32 dm_emscripten_asm_const_int(struct w2c_a *h, u32 code, u32 sig, u32 args) {
     h->pending_ad |= 4;
     break;
   case 8464116:
+    versus_fetch(h, str(h, a[0]), a[1], false);
+    break;
   case 8464153:
-    // Explicit offline failure, not a fabricated HTTP success.
-    fprintf(stderr, "Offline: request not sent: %s\n", str(h, a[0]));
-    game_web_command_fetch_send_url_done(&h->game, 0, 0, a[1]);
+    // sendUrl(url, request, bytes, length, flags): never send run uploads.
+    versus_fetch(h, str(h, a[0]), a[1], true);
     break;
   case 8464197:
   case 8464248:

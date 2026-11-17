@@ -2,3 +2,4 @@ node_modules/
 /modding/generated/
 /webapp/index.modded.wasm
 /native/build/
+native/sdk/examples/*/*.so

@@ -246,8 +246,9 @@ npm run native:sdk -- /absolute/new-sdk  # another distributable output
 ```
 
 Includes headers, complete export signatures, this manual, CMake/package config,
-pkg-config metadata, and sample plugin. Build the game first to generate export
-metadata. No game sources or Node are needed by consumers:
+pkg-config metadata, and sample plugins (`native-tools`, `fun-pack`,
+`couch-chaos`, `time-warp`). Build the game first to generate export metadata.
+No game sources or Node are needed by consumers:
 
 ```bash
 cc -shared -fPIC -std=c11 -O2 -fvisibility=hidden \
@@ -260,6 +261,11 @@ cmake --build /tmp/native-tools-build
 
 PKG_CONFIG_PATH=/path/to/sdk/lib/pkgconfig pkg-config --cflags drive-mad-sdk
 ```
+
+`fun-pack` demonstrates toy physics presets and hotkeys. `couch-chaos` is the
+local turn-based two-player mode: copy it into a mods directory and build it
+with `native:mod`; it is not a revival of the retired online Versus backend.
+`time-warp` cycles the game clock and shows command argument parsing.
 
 `find_package(DriveMadSDK 1 CONFIG REQUIRED)` provides `DriveMad::SDK`.
 No host library link required; function pointers are supplied at load. The simple

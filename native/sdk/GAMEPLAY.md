@@ -100,6 +100,8 @@ Every public `DMApi` function has a real use in the menu:
 
 | Tab | API operations |
 | --- | --- |
+| Gameplay | Pause/step/reward, time scale, driving controls, levels, gravity, body inspector and checked alterations. |
+| Fun | One-shot gravity/material/time toys, plus the local Couch Chaos hot-seat multiplayer instructions. |
 | API | Enumerate count/entries; exact-typed call editor for i32/i64/f32/f64; results and protected flags. |
 | Assets | Enumerate known paths; size-query/read effective packed bytes; hex/ASCII preview; copy raw preview to own storage. |
 | Memory | Allocate and zero owned blocks, list/release owned allocations, bounded reads, hex writes. Default writes require an owned range; arbitrary writes require two explicit advanced controls. |

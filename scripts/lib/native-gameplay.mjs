@@ -17,7 +17,10 @@ export function gameplayPrivateBindings(header) {
   const cleanup = declarations[288 - 116];
   if (cleanup[1] !== "void" || cleanup[3].replace(/\s/g, "") !== "w2c_game*")
     throw new Error("Unexpected native physics teardown signature");
-  return `#include "game.h"\nvoid ${cleanup[2]}(w2c_game*);\n#define game_physics_cleanup ${cleanup[2]}\n`;
+  const versus = declarations[1664 - 116];
+  if (versus[1] !== "void" || versus[3].replace(/\s/g, "") !== "w2c_game*")
+    throw new Error("Unexpected native Versus entry signature");
+  return `#include "game.h"\nvoid ${cleanup[2]}(w2c_game*);\n#define game_physics_cleanup ${cleanup[2]}\nvoid ${versus[2]}(w2c_game*);\n#define game_versus_enter ${versus[2]}\n`;
 }
 
 export function supportsGameplayProfile(wabt, original, compiled) {

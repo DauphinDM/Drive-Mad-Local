@@ -135,6 +135,19 @@ for (let start = 0; start < data.length; start += 4096) {
     `"${[...data.subarray(start, start + 4096)].map((byte) => `\\x${byte.toString(16).padStart(2, "0")}`).join("")}"`,
   );
 }
+const font = await readFile(
+  path.join(root, "native/vendor/fonts/SpaceGrotesk.ttf"),
+);
+const fontBlob = [];
+for (let start = 0; start < font.length; start += 4096) {
+  fontBlob.push(
+    `"${[...font.subarray(start, start + 4096)].map((byte) => `\\x${byte.toString(16).padStart(2, "0")}`).join("")}"`,
+  );
+}
+await writeFile(
+  path.join(output, "font.c"),
+  `/* Embedded Space Grotesk font, SIL OFL 1.1. See native/vendor/fonts/OFL.txt. */\nconst unsigned char dm_ui_font[] =\n${fontBlob.join("\n")};\nconst unsigned int dm_ui_font_size = ${font.length};\n`,
+);
 await writeFile(
   path.join(output, "assets.c"),
   [
@@ -149,7 +162,7 @@ await writeFile(
     `const size_t native_asset_count = ${metadata.files.length};`,
   ].join("\n"),
 );
-const packages = ["sdl2", "libpng"];
+const packages = ["sdl2", "libpng", "libcurl", "zlib"];
 if (desktopGL && !windows && !macos) packages.push("gl");
 if (!desktopGL) packages.push("glesv2");
 const pkgConfig =
@@ -179,6 +192,7 @@ const files = (await readdir(output))
   .map((name) => path.join(output, name));
 files.push(
   path.join(output, "assets.c"),
+  path.join(output, "font.c"),
   path.join(output, "sdk-exports.c"),
   ...[
     "main.c",
@@ -187,6 +201,7 @@ files.push(
     "filesystem.c",
     "mods.c",
     "gameplay.c",
+    "versus.c",
     "gl_loader.c",
     ...(windows ? ["win32_compat.c"] : []),
     "menu.cpp",

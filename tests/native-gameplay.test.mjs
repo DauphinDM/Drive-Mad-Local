@@ -74,6 +74,20 @@ test("gameplay signatures are complete and the executable profile fails closed f
     gameplayPrivateBindings(declarations),
     /#define game_physics_cleanup w2c_game_custom_288/,
   );
+  assert.match(
+    gameplayPrivateBindings(declarations),
+    /#define game_versus_enter w2c_game_custom_1664/,
+  );
+  assert.throws(
+    () =>
+      gameplayPrivateBindings(
+        declarations.replace(
+          "void w2c_game_custom_1664(w2c_game*);",
+          "u32 w2c_game_custom_1664(w2c_game*, u32);",
+        ),
+      ),
+    /Versus entry signature/,
+  );
   assert.throws(
     () => gameplayPrivateBindings(""),
     /private native function table/,
@@ -297,7 +311,7 @@ test(
   },
 );
 test(
-  "native workbench's real buttons pause, step and resume; all eight tabs render without GL errors",
+  "native workbench's real buttons pause, step and resume; all nine tabs render without GL errors",
   { skip: !gui && "Set DRIVE_MAD_TEST_GUI=1 with a display" },
   async () => {
     await temp(async (dir) => {

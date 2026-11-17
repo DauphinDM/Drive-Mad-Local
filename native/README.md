@@ -17,12 +17,13 @@ The analysis-only `index.dcmp` pseudocode cannot be compiled as C. This build us
 Linux/Arch prerequisites (install these yourself if missing):
 
 ```bash
-sudo pacman -S --needed base-devel pkgconf sdl2-compat libglvnd mesa libpng nodejs npm
+sudo pacman -S --needed base-devel pkgconf sdl2-compat libglvnd mesa libpng curl zlib nodejs npm
 ```
 
-macOS uses `brew install sdl2 libpng pkg-config`; Windows CI uses MSYS2 with
-`mingw-w64-x86_64-{gcc,SDL2,libpng,pkgconf,nodejs}`. Building needs C11 and C++17
-compilers and `pkg-config` packages `sdl2`, `libpng`; Linux adds `glesv2` (or
+macOS uses `brew install sdl2 libpng pkg-config curl zlib` (put Homebrew curl
+and zlib's `lib/pkgconfig` directories on `PKG_CONFIG_PATH`); Windows CI uses MSYS2 with
+`mingw-w64-x86_64-{gcc,SDL2,libpng,pkgconf,nodejs,curl,zlib}`. Building needs C11 and C++17
+compilers and `pkg-config` packages `sdl2`, `libpng`, `libcurl`, `zlib`; Linux adds `glesv2` (or
 `gl` for the desktop-GL validation build). No Rust, Qt or web runtime is needed.
 
 ```bash
@@ -49,7 +50,7 @@ binary for the machine that built it, plus generated C and `build.json`
 recording source/asset hashes.
 All 261 packed assets are embedded; the executable can run outside this repo
 without `.wasm`, `.data`, HTML or JavaScript files. Normal system SDL, graphics,
-C/C++ and PNG shared libraries are still required. Release installers bundle the
+C/C++, PNG, curl and zlib shared libraries are still required. Release installers bundle the
 non-driver libraries they need; GPU/display drivers stay on the host.
 
 ## Controls and saves
@@ -58,6 +59,10 @@ non-driver libraries they need; GPU/display drivers stay on the host.
 - **F2**: native mod workbench; `--menu` opens it on launch. Escape closes it
   when not editing text. It captures input before plugins and the game.
 - F11: toggle fullscreen; close the window to quit.
+- `--versus` or **F2 → Fun → Enable replay downloads and open Versus**:
+  the original recorded ghost races. Downloads are opt-in; uploads are blocked.
+  This is not yet simultaneous friend multiplayer. See
+  [the multiplayer research](sdk/MULTIPLAYER-RESEARCH.md).
 - Progress is separate from browser saves:
   `$XDG_DATA_HOME/drive-mad-native`, or `~/.local/share/drive-mad-native` if
   unset on Linux/macOS; `%LOCALAPPDATA%\drive-mad-native` on Windows.
@@ -71,7 +76,12 @@ and `native/menu.cpp`.
 
 ## Gameplay controls and native menu
 
-The built-in eight-tab Dear ImGui workbench includes actual gameplay alterations:
+The engine's own menus are compiled Fancade scenes inside the game assets, not a
+reusable native widget toolkit. The overlay therefore stays a native Dear ImGui
+surface, but uses the shipped `default.png` atlas for its title mark and toolbar
+buttons instead of generic chrome.
+
+The built-in nine-tab Dear ImGui workbench includes actual gameplay alterations:
 gravity presets/custom vectors, body velocity/spin/forces/materials, stop/lift the
 physics world, runtime level selection/restart/next, game-clock scale, pause/frame
 step, auto drive and inverted controls. It also exposes typed API calls, assets,
@@ -91,7 +101,9 @@ frame, not guaranteed one physics tick. Back up saves before experimentation.
 
 Dear ImGui v1.91.9b is vendored at a pinned upstream commit with its MIT license
 in `native/vendor/imgui/LICENSE.txt`; provenance/hashes are in `source.json`.
-No extra GUI runtime/package is installed. `npm run native:ui:install` validates
+The menu uses the shipped game atlas for its toolbar buttons and title mark,
+and the sleek Space Grotesk UI font (SIL OFL 1.1, license at
+`native/vendor/fonts/OFL.txt`). No extra GUI runtime/package is installed. `npm run native:ui:install` validates
 existing vendor files, or downloads the pinned files if absent; it refuses to
 overwrite edits/partial installs.
 
@@ -100,7 +112,8 @@ overwrite edits/partial installs.
 The native game supports opt-in C/C++ `.so` plugins, data-only asset packs,
 lifecycle/input/render hooks, checked game-export calls, namespaced storage,
 settings, cross-mod messaging and a built-in terminal console.
-See the [complete native SDK guide](sdk/README.md) for the API and examples.
+See the [complete native SDK guide](sdk/README.md) for the API and examples,
+including the `fun-pack`, `time-warp` and local `couch-chaos` multiplayer mods.
 
 ```bash
 npm run native:mod -- init native/build/mods/my-tools
@@ -140,7 +153,7 @@ prints rendering/asset/audio/input counters and exits nonzero on failed checks.
 `--trace` logs filesystem opens and recovered bridge calls for debugging.
 
 `--menu-self-test` exercises the real native UI pause/step/resume buttons and all
-eight tabs with synthetic ImGui input (without warping the desktop pointer).
+nine tabs with synthetic ImGui input (without warping the desktop pointer).
 Use `DRIVE_MAD_TEST_GUI=1 OPENCODE_TMP_DIR=/tmp/opencode npm test` in a graphical
 session for live ABI-1 gameplay/physics and UI tests as well as native SDK tests.
 

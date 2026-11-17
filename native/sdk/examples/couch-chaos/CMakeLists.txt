@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(couch_chaos LANGUAGES C)
+find_package(DriveMadSDK 1 CONFIG REQUIRED)
+add_library(mod MODULE mod.c)
+target_link_libraries(mod PRIVATE DriveMad::SDK)
+target_compile_features(mod PRIVATE c_std_11)
+set_target_properties(mod PROPERTIES PREFIX "" C_VISIBILITY_PRESET hidden)

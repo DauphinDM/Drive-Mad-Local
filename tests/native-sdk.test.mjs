@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   access,
+  copyFile,
   mkdtemp,
   mkdir,
   readFile,
@@ -368,6 +369,36 @@ test(
       ]);
       run("cmake", ["--build", cmake]);
       assert.ok((await readFile(path.join(cmake, "mod.so"))).length > 0);
+      for (const example of ["fun-pack", "couch-chaos", "time-warp"]) {
+        const out = path.join(dir, "cmake-" + example);
+        run("cmake", [
+          "-S",
+          path.join(sdk, "examples", example),
+          "-B",
+          out,
+          `-DCMAKE_PREFIX_PATH=${sdk}`,
+        ]);
+        run("cmake", ["--build", out]);
+        assert.ok((await readFile(path.join(out, "mod.so"))).length > 0);
+      }
+      const couch = path.join(dir, "couch-mods/couch-chaos");
+      await mkdir(couch, { recursive: true });
+      await copyFile(
+        path.join(sdk, "examples/couch-chaos/mod.ini"),
+        path.join(couch, "mod.ini"),
+      );
+      await copyFile(
+        path.join(dir, "cmake-couch-chaos/mod.so"),
+        path.join(couch, "mod.so"),
+      );
+      result = game(dir, [
+        "--mods",
+        path.dirname(couch),
+        "--command",
+        "mod couch-chaos info",
+      ]);
+      ok(result);
+      assert.match(result.stderr, /player=1.*wins=0-0.*supported=1/);
       run("pkg-config", ["--cflags", "drive-mad-sdk"], {
         env: {
           ...process.env,

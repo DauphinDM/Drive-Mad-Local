@@ -10,11 +10,17 @@
 #include "vendor/imgui/imgui.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <png.h>
 #include <string>
 #include <vector>
+
+extern const unsigned char dm_ui_font[];
+extern const unsigned int dm_ui_font_size;
 
 struct Allocation {
   uint32_t offset, size;
@@ -28,7 +34,7 @@ struct Menu {
   std::vector<std::string> logs, messages, inputs;
   std::vector<Allocation> allocations;
   std::vector<unsigned char> preview;
-  std::string status = "Ready. F2 toggles this workbench.", result;
+  std::string status = "Ready. F2 toggles this mod menu.", result;
   char filter[128] = {}, asset_filter[128] = {}, command[2048] = {};
   char key[64] = "notes", text[4096] = {}, topic[64] = "workbench",
        payload[2048] = {};
@@ -47,6 +53,9 @@ struct Menu {
   unsigned test_tick = 0, test_tabs = 0;
   uint64_t test_frames = 0;
   ImVec2 pause_target = {}, step_target = {};
+  GLuint atlas_texture = 0;
+  int atlas_width = 0, atlas_height = 0;
+  ImFont *font = nullptr, *heading_font = nullptr;
 };
 static Menu *get(w2c_a *h) { return static_cast<Menu *>(h->menu); }
 static void append(std::vector<std::string> &list, const std::string &line,
@@ -143,6 +152,78 @@ static bool parse_hex(const char *text, std::vector<unsigned char> &out) {
     }
   }
   return high < 0;
+}
+struct AtlasIcon {
+  float u0, v0, u1, v1;
+};
+static AtlasIcon atlas_uv(const Menu &m, float x, float y, float w, float h) {
+  return {x / m.atlas_width, y / m.atlas_height, (x + w) / m.atlas_width,
+          (y + h) / m.atlas_height};
+}
+// A pressable game-atlas sprite. The widget is a real ImGui item, so hover,
+// tooltips, keyboard navigation and BeginDisabled behave normally.
+static bool sprite_button(Menu &m, const char *id, const AtlasIcon &icon,
+                          ImVec2 size, const char *tooltip) {
+  if (!m.atlas_texture)
+    return false;
+  ImGui::PushID(id);
+  bool pressed = ImGui::InvisibleButton("##sprite", size);
+  bool hovered = ImGui::IsItemHovered();
+  bool active = ImGui::IsItemActive();
+  ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+  ImDrawList *draw = ImGui::GetWindowDrawList();
+  ImU32 fill = ImGui::GetColorU32(active    ? ImGuiCol_ButtonActive
+                                  : hovered ? ImGuiCol_ButtonHovered
+                                            : ImGuiCol_Button);
+  draw->AddRectFilled(a, b, fill, 7.0f);
+  draw->AddRect(a, b, ImGui::GetColorU32(ImGuiCol_Border), 7.0f, 0, 2.0f);
+  float pad = 5;
+  draw->AddImage(
+      (ImTextureID)(intptr_t)m.atlas_texture, ImVec2(a.x + pad, a.y + pad),
+      ImVec2(b.x - pad, b.y - pad), ImVec2(icon.u0, icon.v0),
+      ImVec2(icon.u1, icon.v1),
+      IM_COL32(255, 255, 255, (int)(ImGui::GetStyle().Alpha * 255.0f)));
+  if (hovered && tooltip)
+    ImGui::SetTooltip("%s", tooltip);
+  ImGui::PopID();
+  return pressed;
+}
+static void icon_bar(Menu &m, const DMState &state) {
+  if (!m.atlas_texture)
+    return;
+  const ImVec2 button(36, 32);
+  if (sprite_button(m, "quick-pause",
+                    atlas_uv(m, state.paused ? 142 : 1808,
+                             state.paused ? 404 : 398, 100, 100),
+                    button,
+                    state.paused ? "Resume the game" : "Pause the game"))
+    call(m, "native.pause", {dm_i32(!state.paused)});
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!state.paused);
+  if (sprite_button(m, "quick-step", atlas_uv(m, 149, 538, 101, 89), button,
+                    "Step one host frame"))
+    call(m, "native.step");
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  if (sprite_button(m, "quick-restart", atlas_uv(m, 400, 536, 97, 92), button,
+                    "Restart the current level"))
+    call(m, "native.restart");
+  ImGui::SameLine();
+  if (sprite_button(m, "quick-fun", atlas_uv(m, 1281, 513, 126, 126), button,
+                    "Fun experiments"))
+    m.requested_tab = 1;
+  ImGui::SameLine();
+  if (sprite_button(m, "quick-assets", atlas_uv(m, 654, 261, 98, 115), button,
+                    "Shipped game assets"))
+    m.requested_tab = 3;
+  ImGui::SameLine();
+  if (sprite_button(m, "quick-mods", atlas_uv(m, 14, 392, 100, 112), button,
+                    "Mods and console"))
+    m.requested_tab = 7;
+  ImGui::SameLine();
+  if (sprite_button(m, "quick-help", atlas_uv(m, 926, 411, 66, 86), button,
+                    "Diagnostics and status"))
+    m.requested_tab = 8;
 }
 static void gameplay_page(Menu &m, const DMState &state) {
   ImGui::TextWrapped("Real game operations, not invented car offsets. World "
@@ -281,6 +362,113 @@ static void gameplay_page(Menu &m, const DMState &state) {
     call(m, "native.world_lift", {dm_f32(m.lift)});
   ImGui::EndDisabled();
   ImGui::EndDisabled();
+}
+static void fun_gravity(Menu &m, float x, float y, float z) {
+  m.grav[0] = x;
+  m.grav[1] = y;
+  m.grav[2] = z;
+  call(m, "native.gravity", {dm_f32(x), dm_f32(y), dm_f32(z)});
+}
+static void fun_materials(Menu &m, float friction, float bounce) {
+  uint32_t bodies = query(m, "native.body_count").as.i32;
+  uint32_t changed = 0;
+  for (uint32_t i = 0; i < bodies && i < 4096; i++) {
+    DMValue args[2] = {dm_i32(i), dm_f32(friction)};
+    if (m.api->call(m.ctx, "native.body_friction", args, 2, nullptr) == DM_OK)
+      changed++;
+    args[1] = dm_f32(bounce);
+    m.api->call(m.ctx, "native.body_bounce", args, 2, nullptr);
+  }
+  m.status = "Fun preset applied to " + std::to_string(changed) +
+             " bodies (world, not just the truck).";
+  append(m.logs, m.status);
+}
+static void fun_page(Menu &m, const DMState &state) {
+  bool profile = query(m, "native.profile_supported").as.i32 != 0;
+  ImGui::TextWrapped("Playful one-shot experiments built from the checked "
+                     "native API. These alter the whole simulated world, not "
+                     "one identified player car.");
+  ImGui::BeginDisabled(!state.ready || !profile);
+  ImGui::SeparatorText("Gravity toys");
+  if (ImGui::Button("Moon"))
+    fun_gravity(m, 0, -1.62f, 0);
+  ImGui::SameLine();
+  if (ImGui::Button("Zero G"))
+    fun_gravity(m, 0, 0, 0);
+  ImGui::SameLine();
+  if (ImGui::Button("Heavy"))
+    fun_gravity(m, 0, -24, 0);
+  ImGui::SameLine();
+  if (ImGui::Button("Sideways"))
+    fun_gravity(m, 9, -9.8f, 0);
+  ImGui::SameLine();
+  if (ImGui::Button("Gravity roulette")) {
+    double t = ImGui::GetTime() * 1.7;
+    fun_gravity(m, (float)std::cos(t) * 9, -9.8f, (float)std::sin(t) * 9);
+  }
+  if (ImGui::Button("Restore original gravity"))
+    call(m, "native.gravity_reset");
+  ImGui::SeparatorText("World materials");
+  if (ImGui::Button("Bouncy castle"))
+    fun_materials(m, 0.15f, 0.95f);
+  ImGui::SameLine();
+  if (ImGui::Button("Ice rink"))
+    fun_materials(m, 0, 0.05f);
+  ImGui::SameLine();
+  if (ImGui::Button("Sticky rubber"))
+    fun_materials(m, 2.5f, 0);
+  ImGui::SeparatorText("Instant chaos");
+  if (ImGui::Button("Launch the world"))
+    call(m, "native.world_lift", {dm_f32(14)});
+  ImGui::SameLine();
+  if (ImGui::Button("Freeze everything"))
+    call(m, "native.stop_motion");
+  ImGui::SameLine();
+  if (ImGui::Button("Restart the level"))
+    call(m, "native.restart");
+  ImGui::SeparatorText("Time control");
+  if (ImGui::Button("Slow motion"))
+    call(m, "native.time_scale", {dm_f32(0.35f)});
+  ImGui::SameLine();
+  if (ImGui::Button("Normal speed"))
+    call(m, "native.time_scale", {dm_f32(1)});
+  ImGui::SameLine();
+  if (ImGui::Button("Turbo"))
+    call(m, "native.time_scale", {dm_f32(2.5f)});
+  ImGui::EndDisabled();
+  ImGui::SeparatorText("Original Versus: recorded ghost races");
+  ImGui::TextWrapped(
+      "Race downloaded runs using the game's original cars, tracks and race "
+      "UI. These are recorded opponents, not a live friend session. Only "
+      "original replay downloads are enabled; uploads stay blocked.");
+  ImGui::BeginDisabled(!state.ready || !profile);
+  if (ImGui::Button("Enable replay downloads and open Versus")) {
+    if (versus_enable_online(m.host)) {
+      versus_enter(m.host);
+      menu_set_open(m.host, false);
+    } else {
+      m.status = "Versus unavailable or a request is still pending.";
+    }
+  }
+  ImGui::EndDisabled();
+  ImGui::TextWrapped("%s", versus_status(m.host));
+  ImGui::SeparatorText("Local multiplayer: Couch Chaos");
+  ImGui::TextWrapped(
+      "The separate Couch Chaos example mod is local hot-seat, not online "
+      "racing: two players take turns on the same "
+      "level, with a live timer and persistent wins.");
+  ImGui::TextWrapped("Copy native/sdk/examples/couch-chaos into "
+                     "native/build/mods, then run npm run native:mod -- build "
+                     "native/build/mods/couch-chaos. Launch with --mods "
+                     "native/build/mods. F7 restarts your run, F8 hands over, "
+                     "F9 claims the win.");
+  ImGui::BeginDisabled(!profile);
+  if (ImGui::Button("Open Mods / Console tab"))
+    m.requested_tab = 7;
+  ImGui::EndDisabled();
+  if (!profile)
+    ImGui::TextWrapped("Physics toys are disabled for this executable: the "
+                       "stock v166 profile check failed closed.");
 }
 static void api_page(Menu &m) {
   uint32_t count = m.api->export_count(m.ctx);
@@ -615,6 +803,129 @@ static void imgui_backend_shutdown(void) {
   ImGui_ImplOpenGL3_Shutdown();
 #endif
 }
+static ImVec4 rgba(unsigned rgb, float alpha = 1) {
+  return ImVec4(((rgb >> 16) & 255) / 255.0f, ((rgb >> 8) & 255) / 255.0f,
+                (rgb & 255) / 255.0f, alpha);
+}
+// Palette sampled from the game atlas: cream paper, navy ink, cyan sky,
+// bubblegum pink and lemon-yellow accents.
+static void game_style() {
+  ImGui::StyleColorsLight();
+  ImGuiStyle &s = ImGui::GetStyle();
+  s.WindowRounding = 12;
+  s.ChildRounding = 8;
+  s.FrameRounding = 7;
+  s.PopupRounding = 8;
+  s.ScrollbarRounding = 10;
+  s.GrabRounding = 7;
+  s.TabRounding = 8;
+  s.WindowBorderSize = 2;
+  s.ChildBorderSize = 2;
+  s.FrameBorderSize = 2;
+  s.PopupBorderSize = 2;
+  s.WindowPadding = ImVec2(14, 12);
+  s.FramePadding = ImVec2(10, 6);
+  s.ItemSpacing = ImVec2(9, 7);
+  s.ItemInnerSpacing = ImVec2(7, 5);
+  s.ScrollbarSize = 17;
+  s.GrabMinSize = 11;
+  ImVec4 *c = s.Colors;
+  const ImVec4 ink = rgba(0x25204A), cream = rgba(0xF8F4E8),
+               paper = rgba(0xFFFDF6), sky = rgba(0x5BC8F5),
+               pink = rgba(0xE85CB4), lemon = rgba(0xFFD84D),
+               mint = rgba(0xA8E6A1), soft = rgba(0xE8E1D0);
+  c[ImGuiCol_Text] = ink;
+  c[ImGuiCol_TextDisabled] = rgba(0x746D8C);
+  c[ImGuiCol_WindowBg] = cream;
+  c[ImGuiCol_ChildBg] = paper;
+  c[ImGuiCol_PopupBg] = paper;
+  c[ImGuiCol_Border] = ink;
+  c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+  c[ImGuiCol_FrameBg] = ImVec4(1, 1, 1, 0.72f);
+  c[ImGuiCol_FrameBgHovered] = rgba(0xE3F7FF);
+  c[ImGuiCol_FrameBgActive] = rgba(0xFFE2F3);
+  c[ImGuiCol_TitleBg] = sky;
+  c[ImGuiCol_TitleBgActive] = sky;
+  c[ImGuiCol_TitleBgCollapsed] = sky;
+  c[ImGuiCol_MenuBarBg] = cream;
+  c[ImGuiCol_ScrollbarBg] = soft;
+  c[ImGuiCol_ScrollbarGrab] = pink;
+  c[ImGuiCol_ScrollbarGrabHovered] = rgba(0xF47AC7);
+  c[ImGuiCol_ScrollbarGrabActive] = ink;
+  c[ImGuiCol_CheckMark] = pink;
+  c[ImGuiCol_SliderGrab] = pink;
+  c[ImGuiCol_SliderGrabActive] = ink;
+  c[ImGuiCol_Button] = lemon;
+  c[ImGuiCol_ButtonHovered] = rgba(0xFFEA8F);
+  c[ImGuiCol_ButtonActive] = pink;
+  c[ImGuiCol_Header] = rgba(0xBFEFFF);
+  c[ImGuiCol_HeaderHovered] = rgba(0xFFD9F0);
+  c[ImGuiCol_HeaderActive] = pink;
+  c[ImGuiCol_Separator] = rgba(0x25204A, 0.45f);
+  c[ImGuiCol_SeparatorHovered] = pink;
+  c[ImGuiCol_SeparatorActive] = pink;
+  c[ImGuiCol_ResizeGrip] = rgba(0xE85CB4, 0.5f);
+  c[ImGuiCol_ResizeGripHovered] = pink;
+  c[ImGuiCol_ResizeGripActive] = ink;
+  c[ImGuiCol_Tab] = rgba(0xD9F4FD);
+  c[ImGuiCol_TabHovered] = rgba(0xFFE3F4);
+  c[ImGuiCol_TabSelected] = sky;
+  c[ImGuiCol_TabDimmed] = soft;
+  c[ImGuiCol_TabDimmedSelected] = rgba(0x9FE0FA);
+  c[ImGuiCol_PlotLines] = pink;
+  c[ImGuiCol_PlotLinesHovered] = ink;
+  c[ImGuiCol_PlotHistogram] = mint;
+  c[ImGuiCol_PlotHistogramHovered] = pink;
+  c[ImGuiCol_TextSelectedBg] = rgba(0xFFD84D, 0.7f);
+  c[ImGuiCol_NavHighlight] = pink;
+}
+static bool stock_atlas(const unsigned char **bytes, size_t *size) {
+  // Keep menu icon coordinates pinned to the shipped atlas. A mod may replace
+  // default.png for gameplay, but that must not scramble the workbench icons.
+  for (size_t i = 0; i < native_asset_count; i++)
+    if (!std::strcmp(native_asset_index[i].path, "/assets/atlas/default.png") ||
+        !std::strcmp(native_asset_index[i].path, "assets/atlas/default.png")) {
+      *bytes = native_assets + native_asset_index[i].offset;
+      *size = native_asset_index[i].size;
+      return true;
+    }
+  return false;
+}
+static bool load_menu_atlas(Menu &m) {
+  const unsigned char *bytes = nullptr;
+  size_t size = 0;
+  if (!stock_atlas(&bytes, &size) || !bytes || size < 8)
+    return false;
+  png_image image = {};
+  image.version = PNG_IMAGE_VERSION;
+  if (!png_image_begin_read_from_memory(&image, bytes, size))
+    return false;
+  image.format = PNG_FORMAT_RGBA;
+  std::vector<unsigned char> pixels(PNG_IMAGE_SIZE(image));
+  int width = (int)image.width, height = (int)image.height;
+  bool decoded =
+      png_image_finish_read(&image, nullptr, pixels.data(), 0, nullptr) != 0;
+  png_image_free(&image);
+  if (!decoded)
+    return false;
+  GLint previous_texture = 0, alignment = 4;
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+  glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+  glGenTextures(1, &m.atlas_texture);
+  glBindTexture(GL_TEXTURE_2D, m.atlas_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, pixels.data());
+  glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+  glBindTexture(GL_TEXTURE_2D, (GLuint)previous_texture);
+  m.atlas_width = width;
+  m.atlas_height = height;
+  return m.atlas_texture != 0;
+}
 extern "C" void menu_init(w2c_a *h, bool open) {
   auto *m = new Menu;
   m->host = h;
@@ -628,10 +939,26 @@ extern "C" void menu_init(w2c_a *h, bool open) {
   ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   if (h->menu_test)
     ImGui::GetIO().ConfigInputTrickleEventQueue = false;
-  ImGui::StyleColorsDark();
-  ImGui::GetStyle().FrameRounding = 4;
+  ImGuiIO &io = ImGui::GetIO();
+  ImFontConfig font_config;
+  font_config.FontDataOwnedByAtlas = false;
+  font_config.OversampleH = 2;
+  font_config.OversampleV = 2;
+  // Sleek geometric sans, generated from the SIL OFL Space Grotesk family.
+  m->font = io.Fonts->AddFontFromMemoryTTF(
+      (void *)dm_ui_font, (int)dm_ui_font_size, 18.0f, &font_config,
+      io.Fonts->GetGlyphRangesDefault());
+  m->heading_font = io.Fonts->AddFontFromMemoryTTF(
+      (void *)dm_ui_font, (int)dm_ui_font_size, 30.0f, &font_config,
+      io.Fonts->GetGlyphRangesDefault());
+  if (!m->font || !m->heading_font)
+    fail("Native UI font initialization failed");
+  io.FontDefault = m->font;
+  game_style();
   if (!imgui_backend_init(h))
     fail("Native ImGui initialization failed");
+  if (!load_menu_atlas(*m))
+    append(m->logs, "Atlas icons unavailable; text-only menu.");
   menu_set_open(h, open);
 }
 extern "C" void menu_set_open(w2c_a *h, bool open) {
@@ -650,9 +977,9 @@ extern "C" DMStatus menu_select_tab(w2c_a *h, const char *name) {
   Menu *m = get(h);
   if (!m)
     return DM_ENOTREADY;
-  const char *names[] = {"gameplay", "api",      "assets", "memory",
-                         "storage",  "messages", "mods",   "diagnostics"};
-  for (int i = 0; i < 8; i++)
+  const char *names[] = {"gameplay", "fun",      "api",  "assets",     "memory",
+                         "storage",  "messages", "mods", "diagnostics"};
+  for (int i = 0; i < 9; i++)
     if (!std::strcmp(name, names[i])) {
       m->requested_tab = i;
       menu_set_open(h, true);
@@ -684,7 +1011,7 @@ extern "C" bool menu_event(w2c_a *h, const SDL_Event *event) {
   if (input && event->type != SDL_MOUSEMOTION) {
     char b[128];
     std::snprintf(b, sizeof(b), "SDL event %u | %s", event->type,
-                  m->open ? "captured by workbench"
+                  m->open ? "captured by mod menu"
                           : "forwarded to plugin/game routing");
     append(m->inputs, b, 64);
   }
@@ -739,10 +1066,12 @@ extern "C" void menu_render(w2c_a *h) {
       fail("Workbench UI frame-step test failed");
     if (t == 54 && h->paused)
       fail("Workbench UI resume-button test failed");
-    if (t >= 60 && t <= 120 && t % 10 == 0)
+    if (t >= 60 && t <= 140 && t % 10 == 0)
       m->requested_tab = (int)((t - 60) / 10 + 1);
-    if (t == 135) {
-      if (m->test_tabs != 255)
+    if (t == 150) {
+      if (!m->atlas_texture)
+        fail("Workbench game-atlas icon test failed");
+      if (m->test_tabs != 511)
         fail("Workbench UI tab coverage failed");
       SDL_Event toggle = {};
       toggle.type = SDL_KEYDOWN;
@@ -760,7 +1089,7 @@ extern "C" void menu_render(w2c_a *h) {
       if (!menu_event(h, &toggle) || !m->open)
         fail("Workbench F2 reopen test failed");
       fprintf(stderr, "Native workbench self-test passed: real "
-                      "pause/step/resume buttons, 8 tabs.\n");
+                      "pause/step/resume buttons, 9 tabs.\n");
     }
   }
   ImGui::NewFrame();
@@ -775,7 +1104,7 @@ extern "C" void menu_render(w2c_a *h) {
       ImVec2(std::min(320.0f, available.x), std::min(240.0f, available.y)),
       available);
   bool open = m->open;
-  if (ImGui::Begin("Drive Mad | Native Mod Workbench (F2)", &open)) {
+  if (ImGui::Begin("Drive Mad | Mod Menu (F2)", &open)) {
     if (h->menu_test) {
       ImVec2 size = ImGui::GetWindowSize(), pos = ImGui::GetWindowPos();
       if (size.x + pos.x > h->width || size.y + pos.y > h->height)
@@ -786,6 +1115,25 @@ extern "C" void menu_render(w2c_a *h) {
     DMStatus s = m->api->state(m->ctx, &state);
     if (s)
       ImGui::Text("State unavailable: %s", m->api->status_string(s));
+    if (m->atlas_texture) {
+      AtlasIcon mark = atlas_uv(*m, 21, 526, 101, 101);
+      ImGui::Image((ImTextureID)(intptr_t)m->atlas_texture, ImVec2(32, 32),
+                   ImVec2(mark.u0, mark.v0), ImVec2(mark.u1, mark.v1));
+      ImGui::SameLine();
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2);
+    }
+    ImGui::PushFont(m->heading_font);
+    ImGui::PushStyleColor(ImGuiCol_Text, rgba(0x25204A));
+    ImGui::TextUnformatted("DRIVE MAD");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Text, rgba(0xE85CB4));
+    ImGui::TextUnformatted("MOD MENU");
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
+    ImGui::TextDisabled(
+        "F2 closes · game input pauses while this panel is open");
+    icon_bar(*m, state);
     ImGui::TextWrapped("%s", m->status.c_str());
     if (ImGui::BeginTabBar("workbench-tabs",
                            ImGuiTabBarFlags_FittingPolicyScroll)) {
@@ -797,51 +1145,58 @@ extern "C" void menu_render(w2c_a *h) {
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
-              "API", nullptr,
+              "Fun", nullptr,
               m->requested_tab == 1 ? ImGuiTabItemFlags_SetSelected : 0)) {
         m->test_tabs |= 2;
+        fun_page(*m, state);
+        ImGui::EndTabItem();
+      }
+      if (ImGui::BeginTabItem(
+              "API", nullptr,
+              m->requested_tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 4;
         api_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Assets", nullptr,
-              m->requested_tab == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 4;
+              m->requested_tab == 3 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 8;
         assets_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Memory", nullptr,
-              m->requested_tab == 3 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 8;
+              m->requested_tab == 4 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 16;
         memory_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Storage", nullptr,
-              m->requested_tab == 4 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 16;
+              m->requested_tab == 5 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 32;
         storage_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Messages", nullptr,
-              m->requested_tab == 5 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 32;
+              m->requested_tab == 6 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 64;
         messages_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Mods / Console", nullptr,
-              m->requested_tab == 6 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 64;
+              m->requested_tab == 7 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 128;
         console_page(*m);
         ImGui::EndTabItem();
       }
       if (ImGui::BeginTabItem(
               "Diagnostics", nullptr,
-              m->requested_tab == 7 ? ImGuiTabItemFlags_SetSelected : 0)) {
-        m->test_tabs |= 128;
+              m->requested_tab == 8 ? ImGuiTabItemFlags_SetSelected : 0)) {
+        m->test_tabs |= 256;
         diagnostics_page(*m, state);
         ImGui::EndTabItem();
       }
@@ -878,6 +1233,10 @@ extern "C" void menu_close(w2c_a *h) {
     return;
   for (const auto &a : m->allocations)
     m->api->release(m->ctx, a.offset);
+  if (m->atlas_texture) {
+    GLuint texture = m->atlas_texture;
+    glDeleteTextures(1, &texture);
+  }
   imgui_backend_shutdown();
   ImGui_ImplSDL2_Shutdown();
   ImGui::DestroyContext();

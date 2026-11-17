@@ -3,8 +3,8 @@
 
 #include "abi.h"
 #include "gameplay.h"
-#include "sdk/include/drive_mad.h"
 #include "gl_compat.h"
+#include "sdk/include/drive_mad.h"
 #include <SDL.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -37,6 +37,7 @@ struct w2c_a {
   char save_dir[4096];
   struct ModHost *mods;
   Gameplay gameplay;
+  struct Versus *versus;
   void *menu;
 };
 
@@ -96,6 +97,13 @@ void menu_message(struct w2c_a *, const char *sender, const char *topic,
                   const void *, size_t);
 void menu_set_open(struct w2c_a *, bool);
 bool menu_is_open(struct w2c_a *);
+bool versus_init(struct w2c_a *, const char *cache, bool online);
+bool versus_enable_online(struct w2c_a *);
+void versus_enter(struct w2c_a *);
+void versus_fetch(struct w2c_a *, const char *url, u32 request, bool upload);
+void versus_tick(struct w2c_a *);
+void versus_close(struct w2c_a *);
+const char *versus_status(struct w2c_a *);
 DMStatus menu_select_tab(struct w2c_a *, const char *);
 #ifdef __cplusplus
 }

@@ -1,11 +1,24 @@
-import { access, chmod, copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { root } from "./lib/modding.mjs";
 
 if (process.platform !== "linux")
-  throw new Error("Build Linux packages on Linux (or use the GitHub Actions workflow).");
-const version = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version;
+  throw new Error(
+    "Build Linux packages on Linux (or use the GitHub Actions workflow).",
+  );
+const version = JSON.parse(
+  await readFile(path.join(root, "package.json"), "utf8"),
+).version;
 const binary = path.join(root, "native/build/drive-mad");
 const release = path.join(root, "native/build/release/linux");
 const appdir = path.join(release, "DriveMad.AppDir");
@@ -31,7 +44,9 @@ function run(command, args, options = {}) {
       });
     child.on("error", reject);
     child.on("exit", (code) =>
-      code === 0 ? resolve(output.trim()) : reject(new Error(`${command} exited ${code}`)),
+      code === 0
+        ? resolve(output.trim())
+        : reject(new Error(`${command} exited ${code}`)),
     );
   });
 }
@@ -51,20 +66,32 @@ Categories=Game;
 Terminal=false
 `;
 await writeFile(path.join(release, "drive-mad.desktop"), desktop);
-await copyFile(path.join(root, "packaging/icon.png"), path.join(release, "drive-mad.png"));
+await copyFile(
+  path.join(root, "packaging/icon.png"),
+  path.join(release, "drive-mad.png"),
+);
 
 // Bundle non-system libraries; GPU/display drivers stay on the host.
 const libraries = new Set();
-for (const line of (await run("ldd", [binary], { capture: true })).split("\n")) {
+for (const line of (await run("ldd", [binary], { capture: true })).split(
+  "\n",
+)) {
   const match = line.match(/=>\s+(\/\S+)/);
-  if (!match)
-    continue;
+  if (!match) continue;
   const name = path.basename(match[1]);
-  if (/^(libc|libm|libpthread|libdl|librt|ld-linux|libGL|libEGL|libGLX|libGLdispatch|libdrm|libgbm)/.test(name))
+  if (
+    /^(lib(c|m|pthread|dl|rt)\.so|ld-linux|libGL|libEGL|libGLX|libGLdispatch|libdrm|libgbm)/.test(
+      name,
+    )
+  )
     continue;
   libraries.add(match[1]);
 }
-for (const file of ["usr/bin/drive-mad", "drive-mad.desktop", "drive-mad.png"]) {
+for (const file of [
+  "usr/bin/drive-mad",
+  "drive-mad.desktop",
+  "drive-mad.png",
+]) {
   const target = path.join(appdir, file);
   await mkdir(path.dirname(target), { recursive: true });
 }
@@ -79,20 +106,40 @@ exec "$HERE/usr/bin/drive-mad" "$@"
   { mode: 0o755 },
 );
 await chmod(path.join(appdir, "AppRun"), 0o755);
-await copyFile(path.join(release, "drive-mad.desktop"), path.join(appdir, "drive-mad.desktop"));
-await copyFile(path.join(release, "drive-mad.png"), path.join(appdir, "drive-mad.png"));
-await mkdir(path.join(appdir, "usr/share/icons/hicolor/512x512/apps"), { recursive: true });
-await copyFile(path.join(release, "drive-mad.png"), path.join(appdir, "usr/share/icons/hicolor/512x512/apps/drive-mad.png"));
+await copyFile(
+  path.join(release, "drive-mad.desktop"),
+  path.join(appdir, "drive-mad.desktop"),
+);
+await copyFile(
+  path.join(release, "drive-mad.png"),
+  path.join(appdir, "drive-mad.png"),
+);
+await mkdir(path.join(appdir, "usr/share/icons/hicolor/512x512/apps"), {
+  recursive: true,
+});
+await copyFile(
+  path.join(release, "drive-mad.png"),
+  path.join(appdir, "usr/share/icons/hicolor/512x512/apps/drive-mad.png"),
+);
 await mkdir(path.join(appdir, "usr/share/applications"), { recursive: true });
-await copyFile(path.join(release, "drive-mad.desktop"), path.join(appdir, "usr/share/applications/drive-mad.desktop"));
+await copyFile(
+  path.join(release, "drive-mad.desktop"),
+  path.join(appdir, "usr/share/applications/drive-mad.desktop"),
+);
 await mkdir(path.join(appdir, "usr/lib"), { recursive: true });
 for (const library of libraries)
   await copyFile(library, path.join(appdir, "usr/lib", path.basename(library)));
 
 // Portable tarball with a user-level installer.
 await copyFile(binary, path.join(packageDir, "drive-mad"));
-await copyFile(path.join(release, "drive-mad.desktop"), path.join(packageDir, "drive-mad.desktop"));
-await copyFile(path.join(release, "drive-mad.png"), path.join(packageDir, "drive-mad.png"));
+await copyFile(
+  path.join(release, "drive-mad.desktop"),
+  path.join(packageDir, "drive-mad.desktop"),
+);
+await copyFile(
+  path.join(release, "drive-mad.png"),
+  path.join(packageDir, "drive-mad.png"),
+);
 await writeFile(
   path.join(packageDir, "install.sh"),
   `#!/bin/sh

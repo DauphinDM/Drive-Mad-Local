@@ -43,6 +43,8 @@ int main(int argc, char **argv) {
   const char *mod_directory = NULL, *commands[32];
   unsigned command_count = 0;
   bool console = false, show_menu = false;
+  bool versus = false;
+  const char *versus_cache = NULL;
   gameplay_init(&h);
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--trace"))
@@ -57,6 +59,10 @@ int main(int argc, char **argv) {
       console = true;
     else if (!strcmp(argv[i], "--menu"))
       show_menu = true;
+    else if (!strcmp(argv[i], "--versus"))
+      versus = true;
+    else if (!strcmp(argv[i], "--versus-cache") && i + 1 < argc)
+      versus_cache = argv[++i];
     else if (!strcmp(argv[i], "--menu-self-test"))
       show_menu = h.menu_test = h.smoke_test = true, smoke = 180;
     else if (!strcmp(argv[i], "--command") && i + 1 < argc) {
@@ -66,16 +72,17 @@ int main(int argc, char **argv) {
     } else if (!strcmp(argv[i], "--screenshot") && i + 1 < argc)
       screenshot = argv[++i];
     else if (!strcmp(argv[i], "--help")) {
-      puts(
-          "drive-mad [--smoke-test | --self-test | --menu-self-test] "
-          "[--screenshot output.png] "
-          "[--trace] [--mods directory] [--console] [--menu] [--command text]\n"
-          "Native mods are trusted .so code; none load unless --mods is "
-          "supplied.\nArrow "
-          "keys / A,D: drive. Mouse: menus. F2: native workbench. F11: "
-          "fullscreen.\nNative saves: "
-          "$XDG_DATA_HOME/drive-mad-native (or DRIVE_MAD_SAVE_DIR).\nNo "
-          "browser or network; local reward callbacks are enabled.");
+      puts("drive-mad [--smoke-test | --self-test | --menu-self-test] "
+           "[--screenshot output.png] "
+           "[--trace] [--mods directory] [--console] [--menu] [--command text] "
+           "[--versus | --versus-cache directory]\n"
+           "Native mods are trusted .so code; none load unless --mods is "
+           "supplied.\nArrow "
+           "keys / A,D: drive. Mouse: menus. F2: native workbench. F11: "
+           "fullscreen.\nNative saves: "
+           "$XDG_DATA_HOME/drive-mad-native (or DRIVE_MAD_SAVE_DIR).\nNo "
+           "browser. --versus enables read-only original ghost downloads; "
+           "uploads stay disabled. --versus-cache uses local replays instead.");
       return 0;
     } else {
       fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -84,6 +91,8 @@ int main(int argc, char **argv) {
   }
   if (self_test && !getenv("DRIVE_MAD_SAVE_DIR"))
     fail("--self-test requires a dedicated DRIVE_MAD_SAVE_DIR");
+  if (self_test && (versus || versus_cache))
+    fail("Versus requires a graphics session");
   wasm_rt_init();
   filesystem_init(&h);
   if (self_test) {
@@ -106,6 +115,9 @@ int main(int argc, char **argv) {
   }
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS))
     fail(SDL_GetError());
+  if (!versus_init(&h, versus_cache, versus && !versus_cache))
+    fail("Versus unavailable: requires the stock executable and valid "
+         "cache/network setup");
   // CI and software-rendering setups can point SDL at an alternate GL library.
   // Desktop Windows otherwise always resolves opengl32.dll from System32.
   const char *gl_library = getenv("DRIVE_MAD_GL_LIBRARY");
@@ -171,10 +183,13 @@ int main(int argc, char **argv) {
     uint64_t start = SDL_GetTicks64();
     platform_events(&h);
     platform_tick(&h);
+    versus_tick(&h);
     gameplay_tick(&h);
     mods_tick(&h, (start - previous) / 1000.0);
     previous = start;
     if (mods_ready(&h) && !commands_ran) {
+      if (versus || versus_cache)
+        versus_enter(&h);
       for (unsigned i = 0; i < command_count; i++)
         if (mods_command(&h, commands[i]) != DM_OK)
           fail("Startup mod command failed");
@@ -236,6 +251,7 @@ int main(int argc, char **argv) {
   mods_unload(&h);
   menu_close(&h);
   game_app_terminate_if_necessary(&h.game);
+  versus_close(&h);
   if (h.audio)
     SDL_CloseAudioDevice(h.audio);
   wasm2c_game_free(&h.game);

@@ -53,10 +53,18 @@ build inputs. They are not served as a web app.
 
 - **Native C/C++ plugins:** [SDK and built-in API](native/sdk/README.md). Mods
   load at runtime with lifecycle/input/render hooks, checked game exports,
-  settings/storage, asset packs, messages and terminal commands.
-- **Gameplay and API workbench:** press **F2** or pass `--menu`. It exposes
-  researched gravity, velocity, force, material and level operations plus the
-  full 116-entry API browser.
+  settings/storage, asset packs, messages and terminal commands. The included
+  examples add gravity/material toys, a clock mod and **Couch Chaos**, a local
+  turn-based two-player mode. **Original Versus** is restored with `--versus`
+  or F2 → Fun → Enable replay downloads: race downloaded ghost runs using the
+  game's existing race UI. This is **recorded racing, not live friend
+  multiplayer**. Uploads remain disabled; see
+  [multiplayer research](native/sdk/MULTIPLAYER-RESEARCH.md).
+- **Gameplay and API workbench:** press **F2** or pass `--menu`. It uses the
+  game's cream/navy/candy palette, actual atlas buttons and title mark, and the
+  sleek Space Grotesk font. It exposes researched gravity, velocity, force,
+  material and level operations, a Fun tab of one-shot toys, and the full
+  116-entry API browser.
 - **Assets:** `npm run assets:unpack`, edit images/audio/metadata, then
   `npm run assets:pack` and rebuild.
 - **Compiled logic:** [decompilation and function editing](modding/README.md).
@@ -74,5 +82,5 @@ npm test
 ```
 
 On Linux this includes real native startup, filesystem/save isolation, plugin
-loading, physics changes, the eight-tab workbench, and packaged SDK tests.
+loading, physics changes, the nine-tab workbench, and packaged SDK tests.
 See [native/README.md](native/README.md) for CI, packaging and platform notes.
