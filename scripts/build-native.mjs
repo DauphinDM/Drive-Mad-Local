@@ -288,7 +288,7 @@ await run(cxx, [
   ),
   ...(macos ? ["-framework", "OpenGL"] : []),
   ...(windows ? ["-lopengl32"] : []),
-  "-lm",
+  ...(windows ? [] : ["-lm"]),
   ...(platform === "linux" ? ["-ldl"] : []),
   "-o",
   executable,
