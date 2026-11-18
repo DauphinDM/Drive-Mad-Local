@@ -8,6 +8,13 @@ This plan is intentionally gated: a successful four-player transport demo does
 not prove arbitrary-map racing, and successful ghosts do not prove co-op.
 No source changes or deployment described below have been executed.
 
+**User priority — mandatory visual consistency:** every new player-facing UI
+must look and behave like part of the existing Drive Mad game. This is a release
+requirement, not optional end-of-project polish. Audit and reuse the original
+game's screens, assets and interaction language before designing multiplayer
+screens. A functionally complete but visually unrelated UI is **not complete**.
+See [the required UI design contract](#required-ui-design-contract--release-blocking).
+
 Quick navigation: [phases/gates](#1-delivery-sequence-and-gono-go-gates) ·
 [parallel agent ownership](#2-agentic-execution-workflow) ·
 [profile/solver probe](#4-reproducible-baseline-and-profile-gate) ·
@@ -25,11 +32,12 @@ Quick navigation: [phases/gates](#1-delivery-sequence-and-gono-go-gates) ·
 | Phase | Deliverable | Gate before continuing |
 | --- | --- | --- |
 | 0 | Reproducible baseline, isolated saves, source/asset/profile hashes | Build and existing tests pass; failures/skips recorded on each platform. |
+| 0a (early parallel track) | Existing-game UI audit, shared visual tokens/components, representative multiplayer screen | Side-by-side comparison with original game screens demonstrates the same visual language; approve this direction before building the full UI. |
 | 1 | Read-only level inventory, vehicle/role and finish tracing | Every runtime level accounted for; at least one verified multi-car candidate, not guessed names. |
 | 2 | Audited engine adapter, exact tick hooks, lifecycle and ghost opacity proof | One local + three synthetic ghosts, collision isolation, reload stress, no ordinary-map scripts damaged. |
 | 3 | Offline loopback transport/protocol and four-process LAN demo | Ownership, sequencing, stale epochs, malformed packets and disconnect tests pass. |
 | 4 | Private signaling service source + P2P ICE integration | Local signaling test passes; remote deployment separately authorized; direct/failure/relay policy visible. |
-| 5 | Four-player friend racing vertical slice | Same map/vehicle, synchronized start, true win events, correct ranking, three nearby ghosts. |
+| 5 | Four-player friend racing vertical slice | Same map/vehicle, synchronized start, true win events, correct ranking, three nearby ghosts; lobby/HUD/results follow the approved game-matched design. |
 | 6 | All-map race coverage | Every supported playable map/assembly/switch/restart path tested; remaining exceptions block “all maps” claim. |
 | 7 | One host-authoritative co-op vertical slice | Independent role controls, shared puzzle interactions, authoritative scripts, remote camera and restart proven. |
 | 8 | Reviewed multi-car co-op collection | Every included variant has provenance, roles, player bounds, completion and failure tests. |
@@ -67,7 +75,7 @@ engine function simultaneously. A coordinator integrates and reviews all work.
 | Map tooling | `scripts/research-maps.mjs`, reviewed map catalog | Read-only parser contracts |
 | Race mode | `native/multiplayer/race.*`, race test fixtures | Tick adapter, ghosts, transport |
 | Co-op mode | `native/multiplayer/coop.*`, reviewed variants | Role hooks and shared-world proof |
-| UI | `native/menu.cpp` or dedicated multiplayer UI | State machine/API agreed first |
+| UI | `native/menu.cpp` or dedicated multiplayer UI, shared visual tokens/components and screenshot fixtures | Early original-game visual audit; section 11 design contract; state machine/API agreed first |
 | Discord integration | `native/integrations/discord_presence.*`, optional dependency/package tests | Stable session events, privacy settings and authenticated join flow; coordinate shared build changes |
 | Verification | Multiclient harness, impairment/fuzz tests, platform CI | Stable coordinator-owned interfaces |
 
@@ -853,6 +861,89 @@ Later UI implementation must load the applicable frontend/design skills then;
 this research phase introduces no UI. Extend the existing native ImGui workbench
 or a dedicated in-game multiplayer surface rather than reinstating a webview.
 
+### Required UI design contract — release-blocking
+
+**Primary reference: the actual original game UI, not generic ImGui defaults,
+Discord styling, a web dashboard or an invented new multiplayer brand.** The
+existing workbench is a useful native implementation reference, but matching
+the workbench alone is not proof of matching the game's player-facing menus.
+
+#### Audit first, then reuse
+
+1. Capture reference screenshots of the original main menu, map selection,
+   vehicle/race selection, gameplay HUD, win/loss/results and dialogs. Record
+   proportions, spacing, typography, button silhouettes, outlines, iconography,
+   selection/disabled states, transitions and feedback sounds where present.
+2. Inspect `/assets/atlas/default.png`, shipped menu assets and their verified
+   sprite regions. Reuse appropriate original buttons, title marks, icons and
+   visual motifs rather than approximating them with unrelated icon libraries.
+3. Inspect `native/menu.cpp::game_style`, `sprite_button`, `atlas_uv`,
+   `stock_atlas`, `load_menu_atlas`, and the existing embedded Space Grotesk font
+   setup. Reuse or extract shared native helpers/tokens instead of duplicating
+   a second almost-matching theme. Verify original game typography separately;
+   Space Grotesk is confirmed for the native workbench, not every stock screen.
+4. Have the UI agent produce an in-engine representative lobby and HUD/results
+   sample early, with side-by-side original references. Resolve visual direction
+   before expanding to all screens; do not postpone this until networking ends.
+
+Current workbench palette sampled from the shipped atlas, verified in
+`native/menu.cpp::game_style` (reference values, **not** permission to restyle the
+original game):
+
+| Proposed shared semantic token | Existing reference value |
+| --- | --- |
+| `ink` | Navy `#25204A` |
+| `surface` / `surface-raised` | Cream `#F8F4E8` / paper `#FFFDF6` |
+| `accent-sky` | Cyan `#5BC8F5` |
+| `accent-pink` | Bubblegum `#E85CB4` |
+| `action-primary` | Lemon `#FFD84D` |
+| `status-positive` | Mint `#A8E6A1` |
+
+The native style also uses rounded controls, 2 px borders, window padding
+`14 × 12`, frame padding `10 × 6` and item spacing `9 × 7` at its baseline scale.
+Treat these as existing implementation evidence; derive player-facing layouts
+from original screen references and scale coherently for DPI. Define reusable
+semantic color/type/spacing/component tokens once; do not scatter new hex colors
+or per-screen style overrides. Do not add a dark theme unless separately requested.
+
+#### Apply consistently to the entire feature
+
+- Create/join dialogs, invite entry, lobby/player slots, map/role selection,
+  ready/countdown, race/co-op HUD, pause/restart votes, finish/results/rematch,
+  network errors, reconnect states and Discord/privacy settings all follow the
+  same established game language—not just the title screen.
+- Keep the playful, readable presentation and visual hierarchy of the shipped
+  game. No generic SaaS dashboard, glass/neon panels, unrelated gradients,
+  Discord-purple reskin, default ImGui widgets or developer-workbench chrome as
+  the final player experience. Diagnostics can remain in the existing workbench.
+- New multiplayer-only icons (party, connection, role) must fit the original
+  sprite/outline/scale language. Reuse existing assets only when their meaning
+  fits; do not relabel an unrelated sprite and sacrifice usability for reuse.
+- Use established button emphasis, navigation/back behavior, focus/hover/press
+  feedback and transitions. Verify keyboard/gamepad/touch behavior where actually
+  supported; never invent platform controls without checking the input layer.
+- Keep racing HUD information compact and out of the driving/finish sightline.
+  Player colors, ghost names and role markers must fit the palette and remain
+  distinguishable through labels/shapes, not color alone.
+- Maintain readable contrast, visible focus, text scaling, localization room and
+  small-window/high-DPI layouts without abandoning the original style. Reduce
+  decorative motion when requested; do not copy inaccessible behavior blindly.
+
+#### Required visual review and evidence
+
+The UI agent owns screenshot fixtures and a short reference-to-component mapping;
+a separate reviewer checks visual consistency alongside usability. Compare the
+new UI directly against original screens at equivalent resolution/UI scale.
+Cover empty/full/locked lobby, all four slots, long names, map/role selection,
+countdown, gameplay, results, connection failure and Discord settings. Check both
+Linux GLES2 and Windows/macOS desktop GL for font, atlas filtering and clipping.
+
+**Gate:** a vertical slice cannot be called player-ready, and the final feature
+cannot ship, until all player-facing states pass this visual-consistency review.
+Temporary diagnostic/prototype controls must be explicitly marked internal and
+must not be accepted as the final UI. Preserve original single-player screens;
+do not redesign the rest of the game to make new screens appear consistent.
+
 Minimum flow: Create room / Join invite -> mode + map -> role/vehicle selection
 where verified -> Ready -> countdown -> race/co-op HUD -> results -> rematch.
 Show connection state, player/role ownership, direct versus relayed path, room
@@ -1050,6 +1141,9 @@ manual evidence separately from synthetic local transport results.
 ### Final acceptance checklist
 
 - [ ] Four actual simultaneous racers complete every agreed existing playable map.
+- [ ] Every new player-facing screen matches the original game's design scheme;
+      shared assets/tokens/components and side-by-side screenshot reviews cover
+      lobby, HUD, results, errors and Discord settings. This is release-blocking.
 - [ ] Three correctly assembled friends stay visible and fade smoothly nearby.
 - [ ] Common starts, genuine win events, elapsed-time ranking and DNF work.
 - [ ] Private room finder uses the selected free plan without hidden game relay.
