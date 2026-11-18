@@ -4,6 +4,12 @@ Research date: 2026-11-17. Applies to stock game version 166 only.
 Original recorded races are restored in the native host. Live friend
 multiplayer is **not implemented**.
 
+For the proposed 2–4-player live friend races and cooperative map variants, see
+[live multiplayer research](LIVE-MULTIPLAYER-RESEARCH.md) and the
+[implementation plan with code examples](LIVE-MULTIPLAYER-PLAN.md).
+Those documents are research/planning only; this file records the original
+Versus functionality and its restoration.
+
 ## Finding
 
 The game already contains an online **asynchronous ghost-racing** mode.
